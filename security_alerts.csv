@@ -1,0 +1,5 @@
+alert_id,timestamp,alert_name,severity,source_ip,destination_ip,username,rule_id,status,event_count,reason,incident_id
+ALT-001,2026-10-17 10:00:00,Repeated Failed Login Attempts,Critical,203.0.113.10,192.0.2.100,alice,AUTH-001,Investigating,5,Five failed login attempts from the same user and source IP within five minutes; a successful login followed.,INC-001
+ALT-002,2026-10-17 10:12:00,Suspicious Transfer Attempt,High,203.0.113.10,192.0.2.100,alice,BEHAVIOR-003,New,1,A suspicious transfer indicator was present in the event record; verify context before concluding data loss.,INC-001
+ALT-003,2026-10-17 10:06:00,Phishing Report Submitted,High,198.51.100.20,192.0.2.101,bob,BEHAVIOR-003,New,1,A phishing-related indicator was recorded and needs analyst review.,INC-002
+ALT-004,2026-10-17 10:09:00,Denied File Access,Medium,192.0.2.40,192.0.2.103,david,POLICY-004,New,1,A denied file-access attempt was recorded; confirm whether it was expected.,INC-003
