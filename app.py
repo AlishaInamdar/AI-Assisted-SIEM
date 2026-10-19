@@ -497,6 +497,221 @@ def health():
     return jsonify({"status": "ok", "mode": "local CSV prototype"})
 
 
+
+
+# ---------------- Incident reporting integration ----------------
+import ast
+from io import BytesIO, StringIO
+from collections import Counter
+from flask import abort, make_response, send_file, url_for
+from incident_report import build_incident_report
+
+SEVERITY_LEVELS = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+
+
+def _reporting_alerts():
+    """Adapt both dashboard CSV alerts and correlated detection-rule alerts."""
+    rows = _read_csv(ALERTS_CSV)
+    adapted = []
+    for i, row in enumerate(rows, start=1):
+        # Dashboard schema: alert_id, alert_name, rule_id, reason, incident_id.
+        # Rule-engine schema: username, source_ip, severity, rules, reasons, event_count.
+        raw_severity = _value(row, "severity", "MEDIUM").strip().upper()
+        severity_map = {"INFORMATIONAL": "LOW", "INFO": "LOW", "WARNING": "MEDIUM"}
+        severity = severity_map.get(raw_severity, raw_severity)
+        if severity.title() in {"Critical", "High", "Medium", "Low"}:
+            severity = severity.title().upper()
+        if severity not in SEVERITY_LEVELS:
+            severity = "MEDIUM"
+        rules_raw = row.get("rules", "")
+        reasons_raw = row.get("reasons", "")
+        try:
+            rules = ast.literal_eval(rules_raw) if isinstance(rules_raw, str) and rules_raw.startswith(("[", "(")) else rules_raw
+        except (ValueError, SyntaxError):
+            rules = rules_raw
+        try:
+            reasons = ast.literal_eval(reasons_raw) if isinstance(reasons_raw, str) and reasons_raw.startswith(("[", "(")) else reasons_raw
+        except (ValueError, SyntaxError):
+            reasons = reasons_raw
+        if isinstance(rules, (list, tuple)):
+            rule = "; ".join(str(x) for x in rules if str(x).strip())
+        else:
+            rule = str(rules or "").strip()
+        if not rule:
+            rule = _value(row, "rule_id", _value(row, "alert_name", "Security detection"))
+        if isinstance(reasons, (list, tuple)):
+            evidence = "; ".join(str(x) for x in reasons if str(x).strip())
+        else:
+            evidence = str(reasons or "").strip()
+        if not evidence:
+            evidence = _value(row, "reason", "No evidence details supplied in the alert CSV.")
+        timestamp = _value(row, "timestamp", "Unknown")
+        source_ip = _value(row, "source_ip", "Unknown")
+        username = _value(row, "username", "Unknown")
+        incident_id = _value(row, "incident_id", "") or _value(row, "alert_id", f"INC-{i:03d}")
+        adapted.append({
+            "incident_id": incident_id,
+            "timestamp": timestamp,
+            "source_ip": source_ip,
+            "username": username,
+            "rule_triggered": rule,
+            "severity": severity,
+            "evidence": evidence,
+            "destination_ip": _value(row, "destination_ip", "—"),
+            "event_count": _value(row, "event_count", "1"),
+            "status": _value(row, "alert_status", "Unassigned"),
+            "alert_name": _value(row, "alert_name", rule),
+        })
+    return adapted
+
+
+def _get_report(incident_id):
+    for alert in _reporting_alerts():
+        if alert["incident_id"] == incident_id:
+            try:
+                return build_incident_report(alert)
+            except ValueError as exc:
+                abort(400, description=f"Invalid incident data: {exc}")
+    abort(404, description="Incident not found.")
+
+
+@app.get("/incidents")
+def incident_list():
+    alerts = _reporting_alerts()
+    severity_counts = Counter(a["severity"] for a in alerts)
+    query = request.args.get("q", "").strip().lower()
+    severity = request.args.get("severity", "").strip().upper()
+    if query:
+        alerts = [a for a in alerts if query in " ".join(str(v) for v in a.values()).lower()]
+    if severity in SEVERITY_LEVELS:
+        alerts = [a for a in alerts if a["severity"] == severity]
+    alerts.sort(key=lambda a: a.get("timestamp", ""), reverse=True)
+    page_size = 25
+    try: page = max(1, int(request.args.get("page", "1")))
+    except ValueError: page = 1
+    pages = max(1, (len(alerts) + page_size - 1) // page_size)
+    page = min(page, pages)
+    shown = alerts[(page-1)*page_size:page*page_size]
+    return render_template("incident_list.html", alerts=shown, query=query, severity=severity,
+                           page=page, pages=pages, total=len(alerts), severity_counts=severity_counts,
+                           total_all=sum(severity_counts.values()))
+
+
+@app.get("/incident/<path:incident_id>")
+def incident_detail(incident_id):
+    return render_template("incident_detail.html", report=_get_report(incident_id))
+
+
+@app.get("/download-csv/<path:incident_id>")
+def download_incident_csv(incident_id):
+    report = _get_report(incident_id)
+    output = StringIO()
+    fields = ["incident_id", "timestamp", "source_ip", "username", "rule_triggered", "severity", "evidence", "summary", "recommended_actions", "report_generated_at"]
+    writer = csv.DictWriter(output, fieldnames=fields)
+    writer.writeheader()
+    row = dict(report); row["recommended_actions"] = " | ".join(report["recommended_actions"])
+    writer.writerow(row)
+    return send_file(BytesIO(output.getvalue().encode("utf-8-sig")), mimetype="text/csv", as_attachment=True, download_name=f"incident_{incident_id}.csv")
+
+
+def _prepare_aggregate(alerts, title):
+    counts = Counter(a["severity"] for a in alerts)
+    total = len(alerts)
+    rules = Counter(a["rule_triggered"] for a in alerts if a.get("rule_triggered"))
+    return {"title": title, "alerts": alerts, "total": total,
+            "severity_counts": {s: counts.get(s, 0) for s in SEVERITY_LEVELS},
+            "severity_percentages": {s: round(counts.get(s, 0)*100/total, 1) if total else 0 for s in SEVERITY_LEVELS},
+            "rule_counts": rules.most_common(5),
+            "export_url": url_for("export_overall_report") if title == "Overall Incident Report" else url_for("export_severity_report", severity=title.split()[0].upper())}
+
+@app.get("/reports/overall")
+def overall_report():
+    alerts = sorted(_reporting_alerts(), key=lambda a: a.get("timestamp", ""), reverse=True)
+    return render_template("aggregate_report.html", report=_prepare_aggregate(alerts, "Overall Incident Report"))
+
+@app.get("/reports/severity/<severity>")
+def severity_report(severity):
+    severity = severity.strip().upper()
+    if severity not in SEVERITY_LEVELS: abort(404, description="Unknown severity level.")
+    alerts = [a for a in _reporting_alerts() if a["severity"] == severity]
+    alerts.sort(key=lambda a: a.get("timestamp", ""), reverse=True)
+    return render_template("aggregate_report.html", report=_prepare_aggregate(alerts, f"{severity.title()} Severity Incident Report"))
+
+def _export_report_csv(alerts, filename):
+    output = StringIO(); fields = ["incident_id", "timestamp", "source_ip", "username", "rule_triggered", "severity", "evidence"]
+    writer = csv.DictWriter(output, fieldnames=fields, extrasaction="ignore"); writer.writeheader(); writer.writerows(alerts)
+    response = make_response("\ufeff" + output.getvalue()); response.headers["Content-Type"] = "text/csv; charset=utf-8"; response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'; return response
+
+@app.get("/reports/export/overall")
+def export_overall_report():
+    alerts = sorted(_reporting_alerts(), key=lambda a: a.get("timestamp", ""), reverse=True)
+    return _export_report_csv(alerts, "overall_incident_report.csv")
+
+@app.get("/reports/export/severity/<severity>")
+def export_severity_report(severity):
+    severity = severity.strip().upper()
+    if severity not in SEVERITY_LEVELS: abort(404, description="Unknown severity level.")
+    alerts = [a for a in _reporting_alerts() if a["severity"] == severity]
+    return _export_report_csv(alerts, f"{severity.lower()}_incident_report.csv")
+
+# Reuse the reporter's detailed ReportLab PDF generator (one formatted incident per page).
+def create_incident_pdf(alerts, title):
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_LEFT
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+    from xml.sax.saxutils import escape
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=17*mm, leftMargin=17*mm, topMargin=17*mm, bottomMargin=17*mm, title=title)
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name="Brand", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=8, leading=11, textColor=colors.HexColor("#173c70"), spaceAfter=12))
+    styles.add(ParagraphStyle(name="ReportTitleCustom", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=23, leading=28, alignment=TA_LEFT, textColor=colors.HexColor("#071a36"), spaceAfter=6))
+    styles.add(ParagraphStyle(name="SubtitleCustom", parent=styles["Normal"], fontSize=9, leading=13, textColor=colors.HexColor("#64748b"), spaceAfter=18))
+    styles.add(ParagraphStyle(name="FieldLabel", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=7, leading=10, textColor=colors.HexColor("#173c70"), spaceAfter=5))
+    styles.add(ParagraphStyle(name="FieldValue", parent=styles["Normal"], fontSize=10, leading=14, textColor=colors.HexColor("#10213f"), wordWrap="CJK"))
+    styles.add(ParagraphStyle(name="IncidentID", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=17, leading=21, textColor=colors.HexColor("#071a36")))
+    styles.add(ParagraphStyle(name="SeverityLabel", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=8, leading=11))
+    story=[]
+    def safe(v): return escape(str(v if v is not None else ""))
+    def field_card(label, value, accent=None):
+        card=Table([[[Paragraph(label.upper(),styles["FieldLabel"]),Paragraph(safe(value),styles["FieldValue"])] ]],colWidths=[doc.width])
+        cmds=[("BOX",(0,0),(-1,-1),0.7,colors.HexColor("#cbd5e1")),("BACKGROUND",(0,0),(-1,-1),colors.white),("LEFTPADDING",(0,0),(-1,-1),12),("RIGHTPADDING",(0,0),(-1,-1),12),("TOPPADDING",(0,0),(-1,-1),12),("BOTTOMPADDING",(0,0),(-1,-1),12),("VALIGN",(0,0),(-1,-1),"TOP")]
+        if accent: cmds.append(("LINEBEFORE",(0,0),(0,0),3,colors.HexColor(accent)))
+        card.setStyle(TableStyle(cmds)); return [card,Spacer(1,8)]
+    def color_for(s): return {"LOW":"#16805d","MEDIUM":"#b77900","HIGH":"#d35400","CRITICAL":"#dc2626"}.get(s,"#64748b")
+    if not alerts: story=[Paragraph(title,styles["ReportTitleCustom"]),Paragraph("No incidents were found for this report.",styles["FieldValue"])]
+    for i,a in enumerate(alerts):
+        report=build_incident_report(a)
+        if i: story.append(PageBreak())
+        story += [Paragraph("AI-ASSISTED SIEM / SECURITY OPERATIONS",styles["Brand"]),Paragraph("Incident Report",styles["ReportTitleCustom"]),Paragraph("Incident documentation and investigation details",styles["SubtitleCustom"])]
+        ref=Table([[[Paragraph("INCIDENT REFERENCE",styles["FieldLabel"]),Table([[Paragraph(safe(report["incident_id"]),styles["IncidentID"]),Paragraph(safe(report["severity"]),ParagraphStyle(name=f"Severity_{i}",parent=styles["SeverityLabel"],textColor=colors.HexColor(color_for(report["severity"]))))]],colWidths=[doc.width*.76,doc.width*.24],style=TableStyle([("VALIGN",(0,0),(-1,-1),"MIDDLE"),("ALIGN",(1,0),(1,0),"RIGHT"),("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),0)])),Spacer(1,8),Paragraph("Event time: "+safe(report["timestamp"]),styles["FieldValue"])] ]],colWidths=[doc.width])
+        ref.setStyle(TableStyle([("BOX",(0,0),(-1,-1),.7,colors.HexColor("#cbd5e1")),("LEFTPADDING",(0,0),(-1,-1),12),("RIGHTPADDING",(0,0),(-1,-1),12),("TOPPADDING",(0,0),(-1,-1),12),("BOTTOMPADDING",(0,0),(-1,-1),12),("VALIGN",(0,0),(-1,-1),"TOP")]))
+        story += [ref,Spacer(1,8)]
+        details=Table([[[Paragraph("SOURCE IP ADDRESS",styles["FieldLabel"]),Paragraph(safe(report["source_ip"]),styles["FieldValue"])],[Paragraph("AFFECTED USER",styles["FieldLabel"]),Paragraph(safe(report["username"]),styles["FieldValue"])]]],colWidths=[doc.width/2-4,doc.width/2-4])
+        details.setStyle(TableStyle([("BOX",(0,0),(0,0),.7,colors.HexColor("#cbd5e1")),("BOX",(1,0),(1,0),.7,colors.HexColor("#cbd5e1")),("LEFTPADDING",(0,0),(-1,-1),10),("RIGHTPADDING",(0,0),(-1,-1),10),("TOPPADDING",(0,0),(-1,-1),12),("BOTTOMPADDING",(0,0),(-1,-1),12),("VALIGN",(0,0),(-1,-1),"TOP")]))
+        story += [details,Spacer(1,8)]
+        story += field_card("Rule Triggered",report["rule_triggered"])+field_card("Evidence",report["evidence"])+field_card("Incident Summary",report["summary"])
+        actions="<br/>".join(f"{j}. {safe(x)}" for j,x in enumerate(report["recommended_actions"],1))
+        story += field_card("Recommended Defensive Actions",actions)
+    def footer(canvas,document):
+        canvas.saveState(); canvas.setFont("Helvetica",8); canvas.setFillColor(colors.HexColor("#64748b")); canvas.drawCentredString(A4[0]/2,9*mm,f"Page {document.page}"); canvas.restoreState()
+    doc.build(story,onFirstPage=footer,onLaterPages=footer); buffer.seek(0); return buffer
+
+@app.get("/reports/download/overall")
+def download_overall_pdf():
+    alerts=sorted(_reporting_alerts(),key=lambda a:a.get("timestamp",""),reverse=True)
+    return send_file(create_incident_pdf(alerts,"Overall Incident Report"),mimetype="application/pdf",as_attachment=True,download_name="overall_incident_report.pdf")
+
+@app.get("/reports/download/severity/<severity>")
+def download_severity_pdf(severity):
+    severity=severity.strip().upper()
+    if severity not in SEVERITY_LEVELS: abort(404,description="Unknown severity level.")
+    alerts=sorted([a for a in _reporting_alerts() if a["severity"]==severity],key=lambda a:a.get("timestamp",""),reverse=True)
+    return send_file(create_incident_pdf(alerts,f"{severity.title()} Incident Report"),mimetype="application/pdf",as_attachment=True,download_name=f"{severity.lower()}_incident_report.pdf")
+
+
 if __name__ == "__main__":
     print("\nAI-Assisted SIEM dashboard is starting.")
     print("Open http://127.0.0.1:5000 in your browser.")

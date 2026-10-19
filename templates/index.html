@@ -183,6 +183,15 @@
       <section class="panel reports-panel" id="reports-panel">
         <div class="report-copy"><span class="report-icon"><i class="fa-regular fa-file-lines"></i></span><div><h2>Reports & Export</h2><p>Export the displayed alert rows and rejected records for the project report or viva. Exports use the current dashboard dataset.</p></div></div>
         <div class="report-actions"><button class="btn-outline" id="exportAlertsButton"><i class="fa-solid fa-download"></i> Export alerts CSV</button><button class="btn-outline" id="exportRejectedButton"><i class="fa-solid fa-download"></i> Export rejected CSV</button><button class="btn-primary" id="printReportButton"><i class="fa-solid fa-print"></i> Print summary</button></div>
+        <div class="report-actions incident-report-links" aria-label="Incident reports and PDF downloads">
+          <a class="btn-outline" href="{{ url_for('incident_list') }}"><i class="fa-solid fa-file-lines"></i> Open Incident Reports / Filters</a>
+          <a class="btn-outline" href="{{ url_for('overall_report') }}"><i class="fa-solid fa-file-pdf"></i> Overall Report</a>
+          <a class="btn-outline" href="{{ url_for('download_overall_pdf') }}"><i class="fa-solid fa-download"></i> All Incidents PDF</a>
+          <a class="btn-outline" href="{{ url_for('download_severity_pdf', severity='LOW') }}">LOW PDF</a>
+          <a class="btn-outline" href="{{ url_for('download_severity_pdf', severity='MEDIUM') }}">MEDIUM PDF</a>
+          <a class="btn-outline" href="{{ url_for('download_severity_pdf', severity='HIGH') }}">HIGH PDF</a>
+          <a class="btn-outline" href="{{ url_for('download_severity_pdf', severity='CRITICAL') }}">CRITICAL PDF</a>
+        </div>
       </section>
 
       <footer class="page-footer"><span><i class="fa-solid fa-shield-halved"></i> SIEM Sentinel · Academic training prototype</span><span>No live monitoring, geolocation, threat-intel provider, or automated blocking is connected.</span></footer>

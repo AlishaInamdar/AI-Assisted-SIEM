@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Incident Reports | SIEM</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='incident_report.css') }}">
+    <style>
+        .list-container {
+            max-width: 1200px;
+            margin: 35px auto;
+            padding: 24px;
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 20px 0;
+        }
+
+        .toolbar input,
+        .toolbar select,
+        .toolbar button {
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid #526078;
+        }
+
+        .toolbar input {
+            flex: 1;
+            min-width: 180px;
+        }
+
+        .toolbar button,
+        .view-link {
+            background: #2563eb;
+            color: white;
+            text-decoration: none;
+            border: 0;
+            border-radius: 7px;
+            padding: 10px 13px;
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 13px 10px;
+            border-bottom: 1px solid #354052;
+        }
+
+        th {
+            color: #9fb4d5;
+        }
+
+        .pagination {
+            display: flex;
+            gap: 14px;
+            align-items: center;
+            margin-top: 20px;
+        }
+
+        .pagination a {
+            color: #93c5fd;
+        }
+
+        .muted {
+            color: #a7b3c7;
+        }
+
+        .severity-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+            gap: 14px;
+            margin: 24px 0;
+        }
+
+        .severity-card {
+            padding: 18px;
+            border: 1px solid #354052;
+            border-radius: 12px;
+            background: #172033;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .severity-card span {
+            color: #c1ccdc;
+            font-size: 14px;
+        }
+
+        .severity-card strong {
+            color: #ffffff;
+            font-size: 30px;
+        }
+
+        .low-card {
+            border-left: 4px solid #22c55e;
+        }
+
+        .medium-card {
+            border-left: 4px solid #eab308;
+        }
+
+        .high-card {
+            border-left: 4px solid #f97316;
+        }
+
+        .critical-card {
+            border-left: 4px solid #ef4444;
+        }
+
+        .total-card {
+            border-left: 4px solid #3b82f6;
+        }
+    </style>
+</head>
+
+<body>
+    <main class="list-container">
+        <h1>Incident Reports</h1>
+        <p class="muted">Browse and review synthetic security alerts.</p>
+        <p><strong>{{ total }}</strong> matching incidents</p>
+
+        <div class="toolbar">
+            <a class="view-link" href="{{ url_for('overall_report') }}">
+                View Overall Report
+            </a>
+            <a class="view-link" href="{{ url_for('severity_report', severity='LOW') }}">
+                Low Report
+            </a>
+            <a class="view-link" href="{{ url_for('severity_report', severity='MEDIUM') }}">
+                Medium Report
+            </a>
+            <a class="view-link" href="{{ url_for('severity_report', severity='HIGH') }}">
+                High Report
+            </a>
+            <a class="view-link" href="{{ url_for('severity_report', severity='CRITICAL') }}">
+                Critical Report
+            </a>
+        </div>
+        <div class="toolbar" aria-label="Download severity-specific PDF reports">
+            <a class="view-link" href="{{ url_for('download_overall_pdf') }}">Download All Incidents PDF</a>
+            <a class="view-link" href="{{ url_for('download_severity_pdf', severity='LOW') }}">Download LOW PDF</a>
+            <a class="view-link" href="{{ url_for('download_severity_pdf', severity='MEDIUM') }}">Download MEDIUM PDF</a>
+            <a class="view-link" href="{{ url_for('download_severity_pdf', severity='HIGH') }}">Download HIGH PDF</a>
+            <a class="view-link" href="{{ url_for('download_severity_pdf', severity='CRITICAL') }}">Download CRITICAL PDF</a>
+        </div>
+        <form class="toolbar" method="get" action="{{ url_for('incident_list') }}" id="filterForm">
+            <input type="search" name="q" id="searchInput" value="{{ query }}"
+                placeholder="Search ID, username, IP, rule or evidence">
+
+            <select name="severity" id="severityFilter">
+                <option value="">All severities</option>
+                {% for level in ["LOW", "MEDIUM", "HIGH", "CRITICAL"] %}
+                <option value="{{ level }}" {% if severity==level %}selected{% endif %}>
+                    {{ level }}
+                </option>
+                {% endfor %}
+            </select>
+
+            <button type="submit">Search / Filter</button>
+
+            <button type="button" id="clearFilters">Clear</button>
+        </form>
+        <div class="severity-summary">
+            <div class="severity-card total-card">
+                <span>Total Incidents</span>
+                <strong>{{ total_all }}</strong>
+            </div>
+
+            <div class="severity-card low-card">
+                <span>Low</span>
+                <strong>{{ severity_counts.get("LOW", 0) }}</strong>
+            </div>
+
+            <div class="severity-card medium-card">
+                <span>Medium</span>
+                <strong>{{ severity_counts.get("MEDIUM", 0) }}</strong>
+            </div>
+
+            <div class="severity-card high-card">
+                <span>High</span>
+                <strong>{{ severity_counts.get("HIGH", 0) }}</strong>
+            </div>
+
+            <div class="severity-card critical-card">
+                <span>Critical</span>
+                <strong>{{ severity_counts.get("CRITICAL", 0) }}</strong>
+            </div>
+        </div>
+        <script>
+            const form = document.getElementById("filterForm");
+            const searchInput = document.getElementById("searchInput");
+            const severityFilter = document.getElementById("severityFilter");
+            const clearButton = document.getElementById("clearFilters");
+
+            // Apply the selected severity immediately.
+            severityFilter.addEventListener("change", function () {
+                form.requestSubmit();
+            });
+
+            // Clearing the search restores all records if no severity is selected.
+            searchInput.addEventListener("input", function () {
+                if (searchInput.value === "" && !severityFilter.value) {
+                    window.location.href = "{{ url_for('incident_list') }}";
+                }
+            });
+
+            // Clear both search and severity filters immediately.
+            clearButton.addEventListener("click", function () {
+                window.location.href = "{{ url_for('incident_list') }}";
+            });
+        </script>
+
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Incident ID</th>
+                        <th>Timestamp</th>
+                        <th>Source IP</th>
+                        <th>Username</th>
+                        <th>Rule Triggered</th>
+                        <th>Severity</th>
+                        <th>Report</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for alert in alerts %}
+                    <tr>
+                        <td>{{ alert.incident_id }}</td>
+                        <td>{{ alert.timestamp }}</td>
+                        <td>{{ alert.source_ip }}</td>
+                        <td>{{ alert.username }}</td>
+                        <td>{{ alert.rule_triggered }}</td>
+                        <td>{{ alert.severity | upper }}</td>
+                        <td>
+                            <a class="view-link" href="{{ url_for('incident_detail',
+                                        incident_id=alert.incident_id) }}">
+                                View report
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7">No matching incidents found.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <nav class="pagination">
+            {% if page > 1 %}
+            <a href="{{ url_for('incident_list', page=page-1,
+                            q=query, severity=severity) }}">Previous</a>
+            {% endif %}
+
+            <span>Page {{ page }} of {{ pages }}</span>
+
+            {% if page < pages %} <a href="{{ url_for('incident_list', page=page+1,
+                            q=query, severity=severity) }}">Next</a>
+                {% endif %}
+        </nav>
+    </main>
+</body>
+
+</html>
