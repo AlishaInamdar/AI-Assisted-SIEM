@@ -1,0 +1,3 @@
+username,source_ip,severity,rules,event_count,timestamp,reasons
+admin,192.168.1.10,HIGH,"['Repeated Failed Logins', 'Successful Login After Failed Burst']",11,2026-10-18 10:00:00,"['5 failed login attempts detected within 5 minutes', '5 failed login attempts were followed by a successful login within 5 minutes']"
+"user1, user2, user3, user4, user5",192.168.1.50,HIGH,['Multiple Users From One IP'],5,2026-10-18 10:08:00,['Source IP 192.168.1.50 attempted failed logins against 5 different users within 10 minutes']
