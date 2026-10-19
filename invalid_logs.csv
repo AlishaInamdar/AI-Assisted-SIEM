@@ -1,0 +1,2 @@
+timestamp,source_ip,username,event_type,status
+2026-10-18 10:08:00,INVALID_IP,rahul,LOGIN,FAILED
