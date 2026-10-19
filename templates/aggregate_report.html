@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ report.title }} | SIEM</title>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='incident_report.css') }}">
+
+    <style>
+        .report-container {
+            max-width: 1200px;
+            margin: 30px auto;
+            padding: 24px;
+        }
+
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin: 20px 0;
+        }
+
+        .actions a,
+        .actions button {
+            display: inline-block;
+            padding: 10px 15px;
+            border: 0;
+            border-radius: 8px;
+            background: #2563eb;
+            color: white;
+            text-decoration: none;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .actions a:hover,
+        .actions button:hover {
+            background: #1d4ed8;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 14px;
+            margin: 24px 0;
+        }
+
+        .summary-card {
+            background: #172033;
+            border: 1px solid #354052;
+            border-radius: 12px;
+            padding: 18px;
+        }
+
+        .summary-card span {
+            display: block;
+            color: #c1ccdc;
+            margin-bottom: 12px;
+        }
+
+        .summary-card strong {
+            font-size: 28px;
+            color: white;
+        }
+
+        .summary-card small {
+            display: block;
+            margin-top: 8px;
+            color: #c1ccdc;
+        }
+
+        .low {
+            border-left: 4px solid #22c55e;
+        }
+
+        .medium {
+            border-left: 4px solid #eab308;
+        }
+
+        .high {
+            border-left: 4px solid #f97316;
+        }
+
+        .critical {
+            border-left: 4px solid #ef4444;
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid #354052;
+        }
+
+        th {
+            color: #9fb4d5;
+            white-space: nowrap;
+        }
+
+        .rule-list {
+            line-height: 1.9;
+        }
+
+        .back-button {
+            display: inline-block;
+            margin-bottom: 20px;
+        }
+
+        @media print {
+
+            .actions,
+            .back-button {
+                display: none !important;
+            }
+
+            body {
+                background: white !important;
+                color: black !important;
+            }
+
+            .summary-card {
+                background: white;
+                border: 1px solid #999;
+            }
+
+            .summary-card span,
+            .summary-card strong,
+            .summary-card small {
+                color: black;
+            }
+
+            th,
+            td {
+                border-bottom: 1px solid #ccc;
+            }
+
+            .report-container {
+                margin: 0;
+                padding: 0;
+                max-width: 100%;
+            }
+
+            a {
+                color: black;
+                text-decoration: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <main class="report-container">
+
+        <a class="back-button" href="{{ url_for('incident_list') }}">
+            ← Back to All Incidents
+        </a>
+
+        <h1>{{ report.title }}</h1>
+        <p>Generated from the available synthetic incident records.</p>
+
+        <!-- Report actions -->
+        <div class="actions">
+            {% if report.title == "Overall Incident Report" %}
+            <a href="{{ url_for('download_overall_pdf') }}">
+                Download All Incidents PDF
+            </a>
+            {% else %}
+            <a href="{{ url_for(
+            'download_severity_pdf',
+            severity=report.title.split()[0]|lower
+        ) }}">
+                Download {{ report.title.split()[0] }} Incidents PDF
+            </a>
+            {% endif %}
+
+            <button type="button" onclick="window.print()">
+                Print / Save as PDF
+            </button>
+        </div>
+
+        <!-- Incident summary -->
+        <div class="summary-grid">
+
+            <div class="summary-card">
+                <span>Total Incidents</span>
+                <strong>{{ report.total }}</strong>
+            </div>
+
+            {% for level in ["LOW", "MEDIUM", "HIGH", "CRITICAL"] %}
+            <div class="summary-card {{ level|lower }}">
+                <span>{{ level }} Incidents</span>
+                <strong>{{ report.severity_counts[level] }}</strong>
+                <small>
+                    {{ report.severity_percentages[level] }}% of total
+                </small>
+            </div>
+            {% endfor %}
+
+        </div>
+
+        <!-- Most frequent rules -->
+        <h2>Most Frequent Triggered Rules</h2>
+
+        {% if report.rule_counts %}
+        <ol class="rule-list">
+            {% for rule, count in report.rule_counts %}
+            <li>{{ rule }} — {{ count }} occurrence(s)</li>
+            {% endfor %}
+        </ol>
+        {% else %}
+        <p>No triggered rules available.</p>
+        {% endif %}
+
+        <!-- Incident records -->
+        <h2>Incident Records ({{ report.total }})</h2>
+
+        <div class="actions">
+            <a href="{{ report.export_url }}">
+                Export Report Records
+            </a>
+        </div>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Incident ID</th>
+                        <th>Timestamp</th>
+                        <th>Source IP</th>
+                        <th>Username</th>
+                        <th>Rule Triggered</th>
+                        <th>Severity</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for alert in report.alerts %}
+                    <tr>
+                        <td>{{ alert.incident_id }}</td>
+                        <td>{{ alert.timestamp }}</td>
+                        <td>{{ alert.source_ip }}</td>
+                        <td>{{ alert.username }}</td>
+                        <td>{{ alert.rule_triggered }}</td>
+                        <td>{{ alert.severity|upper }}</td>
+                        <td>
+                            <a href="{{ url_for(
+                        'incident_detail',
+                        incident_id=alert.incident_id
+                    ) }}">View</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7">No incidents found.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+    </main>
+</body>
+
+</html>
