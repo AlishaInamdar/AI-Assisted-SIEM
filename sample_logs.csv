@@ -1,15 +1,15 @@
-timestamp,username,source_ip,event_type,status,destination_ip
-2026-10-17 10:00:00,alice,203.0.113.10,Failed Login,Failed,192.0.2.100
-2026-10-17 10:01:00,alice,203.0.113.10,Failed Login,Failed,192.0.2.100
-2026-10-17 10:02:00,alice,203.0.113.10,Failed Login,Failed,192.0.2.100
-2026-10-17 10:03:00,alice,203.0.113.10,Failed Login,Failed,192.0.2.100
-2026-10-17 10:04:00,alice,203.0.113.10,Failed Login,Failed,192.0.2.100
-2026-10-17 10:05:00,alice,203.0.113.10,Successful Login,Success,192.0.2.100
-2026-10-17 10:06:00,bob,198.51.100.20,Phishing Report Submitted,Review,192.0.2.101
-2026-10-17 10:08:00,carol,192.0.2.30,File Access,Success,192.0.2.102
-2026-10-17 10:09:00,david,192.0.2.40,Denied File Access,Denied,192.0.2.103
-2026-10-17 10:10:00,bob,198.51.100.20,Email Review Opened,Success,192.0.2.101
-2026-10-17 10:12:00,alice,203.0.113.10,Suspicious Transfer Attempt,Blocked,192.0.2.100
-2026-10-17 10:13:00,david,192.0.2.40,Password Reset,Success,192.0.2.103
-2026-10-17 10:15:00,carol,192.0.2.30,Application Access,Success,192.0.2.102
-2026-10-17 10:17:00,unknown_user,,Login Attempt,Failed,192.0.2.104
+timestamp,source_ip,username,event_type,status
+2026-10-18 10:00:00,192.168.1.10,admin,LOGIN,FAILED
+2026-10-18 10:01:00,192.168.1.10,admin,LOGIN,FAILED
+2026-10-18 10:02:00,192.168.1.10,admin,LOGIN,FAILED
+2026-10-18 10:03:00,192.168.1.10,admin,LOGIN,FAILED
+2026-10-18 10:04:00,192.168.1.10,admin,LOGIN,FAILED
+2026-10-18 10:05:00,192.168.1.10,admin,LOGIN,SUCCESS
+2026-10-18 10:06:00,192.168.1.20,shreya,LOGIN,SUCCESS
+2026-10-18 10:07:00,192.168.1.30,payal,LOGIN,FAILED
+2026-10-18 10:08:00,INVALID_IP,rahul,LOGIN,FAILED
+2026-10-18 10:08:00,192.168.1.50,user1,LOGIN,FAILED
+2026-10-18 10:09:00,192.168.1.50,user2,LOGIN,FAILED
+2026-10-18 10:10:00,192.168.1.50,user3,LOGIN,FAILED
+2026-10-18 10:11:00,192.168.1.50,user4,LOGIN,FAILED
+2026-10-18 10:12:00,192.168.1.50,user5,LOGIN,FAILED
