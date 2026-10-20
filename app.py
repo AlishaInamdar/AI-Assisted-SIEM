@@ -1,9 +1,11 @@
+#app.py
 from __future__ import annotations
 
 import csv
 import io
 import json
 import os
+from rules import run_detection_rules
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -422,6 +424,9 @@ def _generate_alerts_for_uploaded_logs(rows: list[dict[str, Any]]) -> list[dict[
     return generated
 
 
+LATEST_UPLOADED_ALERTS: list[dict[str, Any]] | None = None
+
+
 def analyze_uploaded_content(content: str) -> dict[str, Any]:
     reader = csv.DictReader(io.StringIO(content.lstrip("\ufeff")))
     if not reader.fieldnames:
@@ -444,6 +449,103 @@ def analyze_uploaded_content(content: str) -> dict[str, Any]:
         raise ValueError("The uploaded CSV has no event rows.")
 
     generated_alerts = _generate_alerts_for_uploaded_logs(accepted)
+
+    # Run Payal's shared detection engine on compatible login events.
+    login_logs = []
+    for row in accepted:
+        normalized, error = _normalize_log(row, 0)
+        if error or not normalized:
+            continue
+
+        event_text = normalized["event_type"].strip().upper()
+        status_text = normalized["status"].strip().upper()
+
+        if (
+            event_text in {"LOGIN", "LOGON", "AUTHENTICATION"}
+            and status_text in {"FAILED", "SUCCESS"}
+        ):
+            login_logs.append({
+                "timestamp": normalized["timestamp"],
+                "source_ip": normalized["source_ip"],
+                "username": normalized["username"],
+                "event_type": "LOGIN",
+                "status": status_text,
+            })
+
+    shared_alerts = run_detection_rules(login_logs)
+
+    # Convert shared alerts into the dashboard's existing alert format.
+    for shared in shared_alerts:
+        rule_names = shared.get("rules", [])
+        generated_alerts.append({
+            "alert_id": f"SHARED-{len(generated_alerts) + 1:03d}",
+            "timestamp": shared.get("timestamp", ""),
+            "alert_name": ", ".join(rule_names) or "Correlated Login Alert",
+            "severity": shared.get("severity", "MEDIUM").title(),
+            "source_ip": shared.get("source_ip", ""),
+            "destination_ip": "",
+            "username": shared.get("username", ""),
+            "rule_id": "SHARED-" + "-".join(
+                name.upper().replace(" ", "-") for name in rule_names
+            ),
+            "status": "New",
+            "event_count": str(shared.get("event_count", 1)),
+            "reason": "; ".join(shared.get("reasons", [])),
+            "incident_id": "",
+        })
+
+       # Remove duplicate alerts for the same user and source IP.
+    unique_alerts = []
+    seen_alerts = {}
+
+    for alert in generated_alerts:
+        key = (
+            alert.get("username", "").strip().lower(),
+            alert.get("source_ip", "").strip(),
+        )
+
+        if key not in seen_alerts:
+            seen_alerts[key] = alert
+            unique_alerts.append(alert)
+        else:
+            existing = seen_alerts[key]
+
+            # Keep the higher severity when both rules detect the same incident.
+            severity_rank = {
+                "low": 1,
+                "medium": 2,
+                "high": 3,
+                "critical": 4,
+            }
+
+            existing_severity = existing.get("severity", "Low").lower()
+            new_severity = alert.get("severity", "Low").lower()
+
+            if severity_rank.get(new_severity, 1) > severity_rank.get(existing_severity, 1):
+                existing["severity"] = alert.get("severity", "Low")
+
+            # Preserve the detection details from both alerts.
+            existing["event_count"] = max(
+                int(existing.get("event_count", 1)),
+                int(alert.get("event_count", 1)),
+            )
+
+            existing_reason = existing.get("reason", "")
+            new_reason = alert.get("reason", "")
+
+            if new_reason and new_reason not in existing_reason:
+                existing["reason"] = (
+                    f"{existing_reason}; {new_reason}"
+                    if existing_reason else new_reason
+                )
+
+    generated_alerts = unique_alerts
+
+    # Make the latest upload available to Diksha's incident/report routes
+    # without overwriting the repository's sample security_alerts.csv.
+    global LATEST_UPLOADED_ALERTS
+    LATEST_UPLOADED_ALERTS = [dict(alert) for alert in generated_alerts]
+
     return _payload(
         accepted,
         rejected,
@@ -497,8 +599,6 @@ def health():
     return jsonify({"status": "ok", "mode": "local CSV prototype"})
 
 
-
-
 # ---------------- Incident reporting integration ----------------
 import ast
 from io import BytesIO, StringIO
@@ -510,8 +610,11 @@ SEVERITY_LEVELS = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
 
 
 def _reporting_alerts():
-    """Adapt both dashboard CSV alerts and correlated detection-rule alerts."""
-    rows = _read_csv(ALERTS_CSV)
+    """Use the latest uploaded alerts when available; otherwise use sample CSV."""
+    if LATEST_UPLOADED_ALERTS is not None:
+        rows = [dict(alert) for alert in LATEST_UPLOADED_ALERTS]
+    else:
+        rows = _read_csv(ALERTS_CSV)
     adapted = []
     for i, row in enumerate(rows, start=1):
         # Dashboard schema: alert_id, alert_name, rule_id, reason, incident_id.
