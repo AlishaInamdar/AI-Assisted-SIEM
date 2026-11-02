@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Incident Report | FileSentinel SIEM</title>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='incident_report.css') }}">
+</head>
+
+<body>
+    <a href="{{ url_for('incident_list') }}" class="back-button">
+        ← Back to All Incidents
+    </a>
+    <main class="page">
+        <header class="topbar">
+            <div>
+                <p class="eyebrow">FILESENTINEL / SECURITY OPERATIONS</p>
+                <h1>Incident Report</h1>
+                <p class="subtitle">
+                    Incident documentation and investigation details
+                </p>
+            </div>
+
+            <div class="report-actions">
+                <a href="{{ url_for('download_incident_csv', incident_id=report.incident_id) }}">
+                    Download CSV
+                </a>
+
+                <button class="print-button" onclick="window.print()">
+                    Print Report
+                </button>
+            </div>
+        </header>
+
+        <section class="incident-heading">
+            <div>
+                <p class="eyebrow">INCIDENT REFERENCE</p>
+                <h2>{{ report.incident_id }}</h2>
+                <p class="muted">
+                    Event time: {{ report.timestamp }}
+                </p>
+            </div>
+
+            <span class="severity severity-{{ report.severity|lower }}">
+                {{ report.severity }}
+            </span>
+        </section>
+
+        <section class="details-grid">
+            <article class="panel">
+                <p class="field-label">SOURCE IP ADDRESS</p>
+                <p class="field-value">{{ report.source_ip }}</p>
+            </article>
+
+            <article class="panel">
+                <p class="field-label">AFFECTED USER</p>
+                <p class="field-value">{{ report.username }}</p>
+            </article>
+
+            <article class="panel full-width">
+                <p class="field-label">RULE TRIGGERED</p>
+                <p class="field-value">{{ report.rule_triggered }}</p>
+            </article>
+
+            <article class="panel full-width">
+                <p class="field-label">EVIDENCE</p>
+                <p class="field-value">{{ report.evidence }}</p>
+            </article>
+
+            <article class="panel full-width">
+                <p class="field-label">INCIDENT SUMMARY</p>
+                <p>{{ report.summary }}</p>
+            </article>
+
+            <article class="panel full-width">
+                <p class="field-label">RECOMMENDED DEFENSIVE NEXT STEPS</p>
+                <ul>
+                    {% for action in report.recommended_actions %}
+                    <li>{{ action }}</li>
+                    {% endfor %}
+                </ul>
+            </article>
+        </section>
+
+        <footer class="report-footer">
+            Report generated at {{ report.report_generated_at }}
+            <p>Prototype report based on synthetic security events.</p>
+        </footer>
+    </main>
+</body>
+
+</html>

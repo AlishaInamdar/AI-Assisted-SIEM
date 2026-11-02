@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#07101d">
+  <title>SIEM Sentinel | Security Overview</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+</head>
+<body>
+<div class="soc-shell">
+  <header class="topbar">
+    <a class="brand" href="#overview" aria-label="SIEM Sentinel dashboard home">
+      <span class="brand-mark"><i class="fa-solid fa-shield-halved"></i><i class="fa-solid fa-plus brand-cross"></i></span>
+      <span class="brand-copy"><strong>SIEM Sentinel</strong><small>AI-Assisted Security Operations</small></span>
+    </a>
+    <nav class="top-nav" aria-label="Primary navigation">
+      <a href="#overview" class="top-link active"><i class="fa-solid fa-border-all"></i> Overview</a>
+      <a href="#alerts-panel" class="top-link"><i class="fa-regular fa-bell"></i> Alerts</a>
+      <a href="#incidents-panel" class="top-link"><i class="fa-solid fa-shield-halved"></i> Incidents</a>
+      <a href="#rules-panel" class="top-link"><i class="fa-solid fa-list-check"></i> Detection Rules</a>
+      <a href="#reports-panel" class="top-link"><i class="fa-regular fa-file-lines"></i> Reports</a>
+    </nav>
+    <div class="top-actions">
+      <span class="local-status"><i></i> LOCAL CSV DATA</span>
+      <div class="analyst-avatar">AN</div>
+      <div class="analyst-copy"><strong>Analyst</strong><small>Training workspace</small></div>
+    </div>
+    <button class="mobile-menu-button" id="mobileMenuButton" aria-label="Toggle navigation"><i class="fa-solid fa-bars"></i></button>
+  </header>
+
+  <div class="app-layout">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-section-label">WORKSPACE</div>
+      <nav class="side-nav" aria-label="Workspace navigation">
+        <a href="#overview" class="side-link active"><i class="fa-solid fa-border-all"></i><span>Security Overview</span></a>
+        <a href="#upload-panel" class="side-link"><i class="fa-solid fa-file-arrow-up"></i><span>Upload Logs / CSV</span></a>
+        <a href="#alerts-panel" class="side-link"><i class="fa-regular fa-bell"></i><span>Alerts</span><span class="side-count" id="sideAlertCount">0</span></a>
+        <a href="#incidents-panel" class="side-link"><i class="fa-solid fa-shield-halved"></i><span>Incidents</span></a>
+        <a href="#rules-panel" class="side-link"><i class="fa-solid fa-list-check"></i><span>Detection Rules</span></a>
+        <a href="#correlation-panel" class="side-link"><i class="fa-solid fa-diagram-project"></i><span>Alert Correlation</span></a>
+        <a href="#reports-panel" class="side-link"><i class="fa-regular fa-file-lines"></i><span>Reports & Export</span></a>
+      </nav>
+
+      <section class="data-sources-card" aria-labelledby="sourceFilesTitle">
+        <div class="sidebar-section-label" id="sourceFilesTitle">LOCAL DATA FILES</div>
+        <div class="source-row"><span>Processed logs</span><span class="source-state"><i class="fa-solid fa-file-csv"></i> LOCAL</span></div>
+        <div class="source-row"><span>Invalid logs</span><span class="source-state"><i class="fa-solid fa-file-csv"></i> LOCAL</span></div>
+        <div class="source-row"><span>Security alerts</span><span class="source-state"><i class="fa-solid fa-file-csv"></i> LOCAL</span></div>
+        <button type="button" class="text-link" id="sidebarUploadButton">Choose log CSV <i class="fa-solid fa-arrow-right"></i></button>
+      </section>
+      <div class="sidebar-foot"><span class="mini-shield"><i class="fa-solid fa-shield-halved"></i></span><span><strong>Local prototype</strong><small>No live systems connected</small></span></div>
+    </aside>
+
+    <main class="main-content" id="overview">
+      {% if load_error %}
+      <div class="load-error"><i class="fa-solid fa-circle-exclamation"></i><div><strong>Could not load the project CSV files</strong><p>{{ load_error }}</p><span>Keep processed_logs.csv, invalid_logs.csv and security_alerts.csv beside app.py.</span></div></div>
+      {% endif %}
+
+      <section class="page-heading">
+        <div>
+          <div class="eyebrow"><span class="eyebrow-line"></span> SECURITY OPERATIONS CENTER <span class="demo-tag"><i class="fa-solid fa-database"></i> CSV-BASED ANALYSIS</span></div>
+          <h1>Security Overview <span class="heading-local"><i></i> LOCAL</span></h1>
+          <p class="page-subtitle">Review processed records, data-quality rejects and alerts from your project CSV files.</p>
+        </div>
+        <div class="heading-actions" id="upload-panel">
+          <div class="last-updated"><span class="status-led"></span><span id="datasetLabel">Project CSV files loaded</span></div>
+          <input type="file" id="logFileInput" accept=".csv,text/csv" hidden>
+          <button class="btn-outline" id="resetDemoButton"><i class="fa-solid fa-rotate-left"></i><span>Reset project data</span></button>
+          <button class="btn-primary" id="uploadButton"><i class="fa-solid fa-cloud-arrow-up"></i><span>Upload logs</span></button>
+        </div>
+      </section>
+
+      <div class="upload-status" id="uploadStatus" role="status" aria-live="polite" hidden></div>
+
+      <section class="kpi-grid" aria-label="Record and alert metrics">
+        <article class="kpi-card kpi-cyan">
+          <div class="kpi-top"><span class="kpi-icon"><i class="fa-solid fa-list-ol"></i></span><span class="kpi-tag">INPUT</span></div>
+          <div class="kpi-label">Total Records</div><div class="kpi-value" id="metricTotalRecords">—</div>
+          <div class="kpi-foot"><span>Valid + rejected rows</span><span class="kpi-foot-value">CSV ROWS</span></div>
+        </article>
+        <article class="kpi-card kpi-green">
+          <div class="kpi-top"><span class="kpi-icon"><i class="fa-solid fa-circle-check"></i></span><span class="kpi-tag">ACCEPTED</span></div>
+          <div class="kpi-label">Valid Records</div><div class="kpi-value" id="metricValidRecords">—</div>
+          <div class="kpi-foot"><span>Read from processed_logs.csv</span><span class="kpi-foot-value">PROCESSED</span></div>
+        </article>
+        <article class="kpi-card kpi-red">
+          <div class="kpi-top"><span class="kpi-icon"><i class="fa-solid fa-circle-exclamation"></i></span><span class="kpi-tag">DATA QUALITY</span></div>
+          <div class="kpi-label">Rejected Records</div><div class="kpi-value" id="metricRejectedRecords">—</div>
+          <div class="kpi-foot"><span>Includes rejection reason</span><span class="kpi-foot-value">REVIEW</span></div>
+        </article>
+        <article class="kpi-card kpi-blue">
+          <div class="kpi-top"><span class="kpi-icon"><i class="fa-solid fa-network-wired"></i></span><span class="kpi-tag">UNIQUE</span></div>
+          <div class="kpi-label">Unique Source IPs</div><div class="kpi-value" id="metricUniqueIPs">—</div>
+          <div class="kpi-foot"><span>Distinct IPs in valid logs</span><span class="kpi-foot-value">SOURCE IP</span></div>
+        </article>
+        <article class="kpi-card kpi-purple">
+          <div class="kpi-top"><span class="kpi-icon"><i class="fa-solid fa-bell"></i></span><span class="kpi-tag">DETECTIONS</span></div>
+          <div class="kpi-label">Alerts</div><div class="kpi-value" id="metricAlerts">—</div>
+          <div class="kpi-foot"><span>Rows in security_alerts.csv</span><span class="kpi-foot-value">ALERT ROWS</span></div>
+        </article>
+      </section>
+
+      <section class="analytics-grid" aria-label="Visual analytics">
+        <article class="panel chart-panel event-chart-panel">
+          <div class="panel-heading">
+            <div><div class="panel-title"><span class="heading-icon cyan"><i class="fa-solid fa-chart-line"></i></span><h2>Event Counts</h2></div><p class="panel-subtitle">Valid processed records grouped by timestamp</p></div>
+            <span class="section-chip">FROM PROCESSED LOGS</span>
+          </div>
+          <div class="chart-wrap event-chart-wrap"><canvas id="eventTrendChart" aria-label="Event count trend"></canvas><div id="eventTrendEmpty" class="empty-chart" hidden>No parseable timestamps were found in processed_logs.csv.</div></div>
+        </article>
+        <article class="panel chart-panel severity-panel">
+          <div class="panel-heading">
+            <div><div class="panel-title"><span class="heading-icon purple"><i class="fa-solid fa-chart-pie"></i></span><h2>Severity Breakdown</h2></div><p class="panel-subtitle">Classification in the supplied alert rows</p></div>
+          </div>
+          <div class="severity-chart-wrap"><div class="severity-donut-wrap"><canvas id="severityChart" aria-label="Alert severity breakdown"></canvas><div class="donut-center"><strong id="severityTotal">0</strong><span>alerts</span></div></div><div id="severityLegend" class="severity-legend"></div></div>
+        </article>
+        <article class="panel chart-panel event-type-panel">
+          <div class="panel-heading">
+            <div><div class="panel-title"><span class="heading-icon blue"><i class="fa-solid fa-chart-column"></i></span><h2>Event Types</h2></div><p class="panel-subtitle">Counts computed from processed_logs.csv</p></div>
+          </div>
+          <div class="chart-wrap event-type-chart-wrap"><canvas id="eventTypesChart" aria-label="Event types chart"></canvas><div id="eventTypesEmpty" class="empty-chart" hidden>No event types were found.</div></div>
+        </article>
+        <article class="panel data-quality-panel">
+          <div class="panel-heading">
+            <div><div class="panel-title"><span class="heading-icon amber"><i class="fa-solid fa-list-check"></i></span><h2>Data Quality</h2></div><p class="panel-subtitle">Rows supplied by the preprocessing stage</p></div>
+          </div>
+          <div class="quality-stack">
+            <div class="quality-line"><span>Total records</span><strong id="qualityTotal">—</strong></div>
+            <div class="quality-track"><span id="qualityValidBar"></span></div>
+            <div class="quality-legend"><span><i class="dot-green"></i> Valid <strong id="qualityValid">—</strong></span><span><i class="dot-red"></i> Rejected <strong id="qualityRejected">—</strong></span></div>
+            <p class="quality-note"><i class="fa-solid fa-circle-info"></i> Rejected rows stay separate and display a reason below; they are not silently counted as valid.</p>
+          </div>
+          <div class="source-file-summary" id="sourceFileSummary"></div>
+        </article>
+      </section>
+
+      <section class="panel table-panel" id="alerts-panel">
+        <div class="panel-heading table-heading">
+          <div><div class="panel-title"><span class="heading-icon red"><i class="fa-regular fa-bell"></i></span><h2>Suspicious Events & Security Alerts</h2></div><p class="panel-subtitle">Each row comes from security_alerts.csv (or the visible rules when analyzing an uploaded CSV).</p></div>
+          <div class="table-tools"><input type="search" id="alertSearch" placeholder="Search alert, IP, rule…" aria-label="Search alerts"><select id="severityFilter" class="select-dark" aria-label="Filter by severity"><option value="all">All severities</option><option>Critical</option><option>High</option><option>Medium</option><option>Low</option><option>Informational</option><option>Unknown</option></select></div>
+        </div>
+        <div class="table-responsive"><table class="table soc-table"><thead><tr><th>Time</th><th>Alert</th><th>Severity</th><th>Source IP</th><th>Rule</th><th>Status</th><th>Evidence / Reason</th></tr></thead><tbody id="alertsTableBody"><tr><td colspan="7" class="empty-cell">Loading alert rows…</td></tr></tbody></table></div>
+        <div class="table-footer"><div class="footer-counts"><span id="alertsTableCount">0 alerts</span><span id="suspiciousEventCount">0 suspicious event rows</span></div><button class="text-link" id="clearFiltersButton">Clear filters <i class="fa-solid fa-arrow-rotate-left"></i></button></div>
+      </section>
+
+      <section class="two-column-grid">
+        <article class="panel table-panel" id="incidents-panel">
+          <div class="panel-heading">
+            <div><div class="panel-title"><span class="heading-icon purple"><i class="fa-solid fa-shield-halved"></i></span><h2>Incidents</h2></div><p class="panel-subtitle">Only incident IDs present in the alert data are listed.</p></div>
+          </div>
+          <div class="table-responsive"><table class="table soc-table compact-table"><thead><tr><th>Incident ID</th><th>Alerts</th><th>Priority</th><th>Source IP</th></tr></thead><tbody id="incidentsTableBody"><tr><td colspan="4" class="empty-cell">Loading…</td></tr></tbody></table></div>
+        </article>
+        <article class="panel table-panel" id="correlation-panel">
+          <div class="panel-heading">
+            <div><div class="panel-title"><span class="heading-icon cyan"><i class="fa-solid fa-diagram-project"></i></span><h2>Alert Correlation</h2></div><p class="panel-subtitle">Uses supplied incident IDs or flags repeated source IPs for manual review.</p></div>
+          </div>
+          <div class="table-responsive"><table class="table soc-table compact-table"><thead><tr><th>Group</th><th>Alerts</th><th>Priority</th><th>Correlation basis</th></tr></thead><tbody id="correlationTableBody"><tr><td colspan="4" class="empty-cell">Loading…</td></tr></tbody></table></div>
+        </article>
+      </section>
+
+      <section class="two-column-grid lower-grid">
+        <article class="panel table-panel" id="rules-panel">
+          <div class="panel-heading">
+            <div><div class="panel-title"><span class="heading-icon blue"><i class="fa-solid fa-list-check"></i></span><h2>Detection Rules</h2></div><p class="panel-subtitle">Explainable example rules used for uploaded CSV analysis.</p></div>
+            <span class="section-chip">RULE-BASED</span>
+          </div>
+          <div class="rule-list" id="rulesList"></div>
+        </article>
+        <article class="panel table-panel" id="rejected-panel">
+          <div class="panel-heading">
+            <div><div class="panel-title"><span class="heading-icon amber"><i class="fa-solid fa-triangle-exclamation"></i></span><h2>Rejected Records</h2></div><p class="panel-subtitle">From invalid_logs.csv, including the reject_reason field.</p></div>
+          </div>
+          <div class="table-responsive"><table class="table soc-table compact-table"><thead><tr><th>Row</th><th>Timestamp</th><th>Source IP</th><th>Reason</th></tr></thead><tbody id="rejectedTableBody"><tr><td colspan="4" class="empty-cell">Loading…</td></tr></tbody></table></div>
+        </article>
+      </section>
+
+      <section class="panel reports-panel" id="reports-panel">
+        <div class="report-copy"><span class="report-icon"><i class="fa-regular fa-file-lines"></i></span><div><h2>Reports & Export</h2><p>Export the displayed alert rows and rejected records for the project report or viva. Exports use the current dashboard dataset.</p></div></div>
+        <div class="report-actions"><button class="btn-outline" id="exportAlertsButton"><i class="fa-solid fa-download"></i> Export alerts CSV</button><button class="btn-outline" id="exportRejectedButton"><i class="fa-solid fa-download"></i> Export rejected CSV</button><button class="btn-primary" id="printReportButton"><i class="fa-solid fa-print"></i> Print summary</button></div>
+        <div class="report-actions incident-report-links" aria-label="Incident reports and PDF downloads">
+          <a class="btn-outline" href="{{ url_for('incident_list') }}"><i class="fa-solid fa-file-lines"></i> Open Incident Reports / Filters</a>
+          <a class="btn-outline" href="{{ url_for('overall_report') }}"><i class="fa-solid fa-file-pdf"></i> Overall Report</a>
+          <a class="btn-outline" href="{{ url_for('download_overall_pdf') }}"><i class="fa-solid fa-download"></i> All Incidents PDF</a>
+          <a class="btn-outline" href="{{ url_for('download_severity_pdf', severity='LOW') }}">LOW PDF</a>
+          <a class="btn-outline" href="{{ url_for('download_severity_pdf', severity='MEDIUM') }}">MEDIUM PDF</a>
+          <a class="btn-outline" href="{{ url_for('download_severity_pdf', severity='HIGH') }}">HIGH PDF</a>
+          <a class="btn-outline" href="{{ url_for('download_severity_pdf', severity='CRITICAL') }}">CRITICAL PDF</a>
+        </div>
+      </section>
+
+      <footer class="page-footer"><span><i class="fa-solid fa-shield-halved"></i> SIEM Sentinel · Academic training prototype</span><span>No live monitoring, geolocation, threat-intel provider, or automated blocking is connected.</span></footer>
+    </main>
+  </div>
+</div>
+<div class="toast-message" id="toastMessage" role="status" aria-live="polite"></div>
+<div class="modal-overlay" id="alertDetailModal" hidden><div class="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detailTitle"><button class="modal-close" id="closeDetailModal" aria-label="Close details"><i class="fa-solid fa-xmark"></i></button><div class="modal-eyebrow">ALERT RECORD</div><h2 id="detailTitle">Alert details</h2><div id="detailModalBody"></div></div></div>
+<script>
+  window.SIEM_INITIAL = {{ dashboard|tojson if dashboard else 'null' }};
+  window.SIEM_LOAD_ERROR = {{ load_error|tojson }};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,2 @@
+row_number,timestamp,username,source_ip,event_type,status,reject_reason
+15,2026-10-17 10:17:00,unknown_user,,Login Attempt,Failed,Missing required source_ip value.
